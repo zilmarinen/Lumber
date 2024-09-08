@@ -4,6 +4,7 @@
 //  Created by Zack Brown on 04/09/2024.
 //
 
+import Bivouac
 import Euclid
 
 public struct Surface {
@@ -22,15 +23,12 @@ public struct Surface {
     }
     
     internal let order, degreeU, degreeV: Int
-    internal let knotsU, knotsV: [Double]
     internal let splineTypeU, splineTypeV: SplineType
     internal let controlPoints: [ControlPoint]
     
     public init(_ order: Int,
                 _ degreeU: Int,
                 _ degreeV: Int,
-                _ knotsU: [Double],
-                _ knotsV: [Double],
                 _ splineTypeU: SplineType,
                 _ splineTypeV: SplineType,
                 _ controlPoints: [ControlPoint]) {
@@ -38,8 +36,6 @@ public struct Surface {
         self.order = order
         self.degreeU = degreeU
         self.degreeV = degreeV
-        self.knotsU = knotsU
-        self.knotsV = knotsV
         self.splineTypeU = splineTypeU
         self.splineTypeV = splineTypeV
         self.controlPoints = controlPoints
@@ -54,12 +50,12 @@ public struct Surface {
         var sample = Vector.zero
         var d: Double = 1e-8
         
-        for tV in 0..<degreeV {
+        for iV in 0..<degreeV {
             
-            for tU in 0..<degreeU {
+            for iU in 0..<degreeU {
                 
-                let b = basis(tU, order, order, u, knotTypeU) * basis(tV, order, order, v, knotTypeV)
-                let control = controlPoints[tU + tV * degreeU]
+                let b = basis(iU, order, degreeU, tU, knotTypeU) * basis(iV, order, degreeV, tV, knotTypeV)
+                let control = controlPoints[iU + iV * degreeU]
                 
                 sample += control.position * b * control.weight
                 d += b * control.weight
@@ -78,10 +74,10 @@ internal extension Surface {
     var loopU: Bool { splineTypeU == .loop }
     var loopV: Bool { splineTypeV == .loop }
     
-    var minimumU: Double { knotVector(order, order, degreeU, knotTypeU) }
-    var minimumV: Double { knotVector(order, order, degreeV, knotTypeV) }
-    var maximumU: Double { knotVector(degreeU, order, degreeU, knotTypeU) }
-    var maximumV: Double { knotVector(degreeV, order, degreeV, knotTypeV) }
+    var minimumU: Double { knotVector(order, degreeU, knotTypeU) }
+    var minimumV: Double { knotVector(order, degreeV, knotTypeV) }
+    var maximumU: Double { knotVector(degreeU, degreeU, knotTypeU) }
+    var maximumV: Double { knotVector(degreeV, degreeV, knotTypeV) }
     
     func transpose(u value: Double) -> Double { minimumU + (maximumU - minimumU) * value }
     func transpose(v value: Double) -> Double { minimumV + (maximumV - minimumV) * value }
@@ -90,7 +86,6 @@ internal extension Surface {
 internal extension Surface {
     
     func knotVector(_ index: Int,
-                    _ order: Int,
                     _ controlCount: Int,
                     _ knotType: KnotType) -> Double {
         
@@ -116,16 +111,16 @@ internal extension Surface {
         
         guard k != 0 else {
             
-            let lhs = knotVector(j, order, length, knotType)
-            let rhs = knotVector(j + 1, order, length, knotType)
+            let lhs = knotVector(j, length, knotType)
+            let rhs = knotVector(j + 1, length, knotType)
             
             return t >= lhs && t < rhs ? 1.0 : 0.0
         }
         
-        let k0 = knotVector(j + k, order, length, knotType)
-        let k1 = knotVector(j, order, length, knotType)
-        let k2 = knotVector(j + k + 1, order, length, knotType)
-        let k3 = knotVector(j + 1, order, length, knotType)
+        let k0 = knotVector(j + k, length, knotType)
+        let k1 = knotVector(j, length, knotType)
+        let k2 = knotVector(j + k + 1, length, knotType)
+        let k3 = knotVector(j + 1, length, knotType)
         
         let v0 = k0 - k1
         let v1 = k2 - k3
@@ -135,5 +130,41 @@ internal extension Surface {
         
         return  c0 * basis(j, k - 1, length, t, knotType) +
                 c1 * basis(j + 1, k - 1, length, t, knotType)
+    }
+}
+
+extension Surface {
+    
+    public func mesh(_ uResolution: Int,
+                     _ vResolution: Int) throws -> Mesh {
+        
+        let uStep = 1.0 / Double(uResolution)
+        let vStep = 1.0 / Double(vResolution)
+        
+        var polygons: [Polygon] = []
+        
+        for u in 1...uResolution {
+            
+            for v in 1...vResolution {
+                
+                let s0 = sample(Double(u - 1) * uStep, Double(v - 1) * vStep)
+                let s1 = sample(Double(u - 1) * uStep, Double(v) * vStep)
+                let s2 = sample(Double(u) * uStep, Double(v - 1) * vStep)
+                let s3 = sample(Double(u) * uStep, Double(v) * vStep)
+                
+                print("s0 -> \(s0.id)")
+                print("s1 -> \(s1.id)")
+                print("s2 -> \(s2.id)")
+                print("s3 -> \(s3.id)")
+                
+                try polygons.append(Polygon.face([s2, s1, s0],
+                                                 .blue))
+                
+                try polygons.append(Polygon.face([s3, s1, s2],
+                                                 .red))
+            }
+        }
+        
+        return Mesh(polygons)
     }
 }
