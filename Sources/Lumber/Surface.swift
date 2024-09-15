@@ -24,7 +24,7 @@ public struct Surface {
     
     internal let order, degreeU, degreeV: Int
     internal let splineTypeU, splineTypeV: SplineType
-    internal let controlPoints: [ControlPoint]
+    public let controlPoints: [ControlPoint]
     
     public init(_ order: Int,
                 _ degreeU: Int,
@@ -34,11 +34,43 @@ public struct Surface {
                 _ controlPoints: [ControlPoint]) {
         
         self.order = order
-        self.degreeU = degreeU
-        self.degreeV = degreeV
         self.splineTypeU = splineTypeU
         self.splineTypeV = splineTypeV
-        self.controlPoints = controlPoints
+        
+        let loopU = splineTypeU == .loop
+        let loopV = splineTypeV == .loop
+        
+        switch (loopU, loopV) {
+            
+        case (false, false):
+            
+            self.degreeU = degreeU
+            self.degreeV = degreeV
+            self.controlPoints = controlPoints
+            
+        case (false, true):
+            
+            self.degreeU = degreeU
+            self.degreeV = degreeV + order
+            self.controlPoints = controlPoints
+            
+        case (true, false):
+            
+            self.degreeU = degreeU + order
+            self.degreeV = degreeV
+            self.controlPoints = controlPoints.wrapX(degreeU,
+                                                     degreeV,
+                                                     order)
+            
+        case (true, true):
+            
+            self.degreeU = degreeU + order
+            self.degreeV = degreeV + order
+            self.controlPoints = controlPoints
+        }
+        
+        print("U: [\(minimumU), \(maximumU)]")
+        print("V: [\(minimumV), \(maximumV)]")
     }
     
     public func sample(_ u: Double,
@@ -70,9 +102,6 @@ internal extension Surface {
     
     var knotTypeU: KnotType { splineTypeU == .clamped ? .openUniform : .uniform }
     var knotTypeV: KnotType { splineTypeV == .clamped ? .openUniform : .uniform }
- 
-    var loopU: Bool { splineTypeU == .loop }
-    var loopV: Bool { splineTypeV == .loop }
     
     var minimumU: Double { knotVector(order, degreeU, knotTypeU) }
     var minimumV: Double { knotVector(order, degreeV, knotTypeV) }
@@ -152,11 +181,6 @@ extension Surface {
                 let s2 = sample(Double(u) * uStep, Double(v - 1) * vStep)
                 let s3 = sample(Double(u) * uStep, Double(v) * vStep)
                 
-                print("s0 -> \(s0.id)")
-                print("s1 -> \(s1.id)")
-                print("s2 -> \(s2.id)")
-                print("s3 -> \(s3.id)")
-                
                 try polygons.append(Polygon.face([s2, s1, s0],
                                                  .blue))
                 
@@ -166,5 +190,76 @@ extension Surface {
         }
         
         return Mesh(polygons)
+    }
+}
+
+extension Surface {
+    
+    public static func plane(_ u: Double = 1.0,
+                             _ v: Double = 1.0) -> Self {
+        
+        let controlPoints = [ControlPoint(.init(u, 0.0, -v), 1.0),
+                             ControlPoint(.init(-u, 0.0, -v), 1.0),
+                             ControlPoint(.init(u, 0.0, v), 1.0),
+                             ControlPoint(.init(-u, 0.0, v), 1.0)]
+        
+        return Surface(1,
+                       2,
+                       2,
+                       .default,
+                       .default,
+                       controlPoints)
+    }
+    
+    static func torus() -> Self {
+        
+        let controlPoints = [ControlPoint(.init(0.0, 0.0, 1.0), 1.0),
+                             ControlPoint(.init(2.0, 0.0, 1.0), 1.0 / 3.0),
+                             ControlPoint(.init(2.0, 0.0, -1.0), 1.0 / 3.0),
+                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0),
+                             
+                             ControlPoint(.init(0.0, 0.0, 1.0), 1.0 / 3.0),
+                             ControlPoint(.init(2.0, 4.0, 1.0), 1.0 / 9.0),
+                             ControlPoint(.init(2.0, 4.0, -1.0), 1.0 / 9.0),
+                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0 / 3.0),
+                             
+                             ControlPoint(.init(0.0, 0.0, 1.0), 1.0 / 3.0),
+                             ControlPoint(.init(-2.0, 4.0, 1.0), 1.0 / 9.0),
+                             ControlPoint(.init(-2.0, 4.0, -1.0), 1.0 / 9.0),
+                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0 / 3.0),
+                             
+                             ControlPoint(.init(0.0, 0.0, 1.0), 1.0),
+                             ControlPoint(.init(-2.0, 0.0, 1.0), 1.0 / 3.0),
+                             ControlPoint(.init(-2.0, 0.0, -1.0), 1.0 / 3.0),
+                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0)]
+        
+        return Surface(2,
+                       4,
+                       4,
+                       .default,
+                       .default,
+                       controlPoints)
+    }
+}
+
+extension Array where Element == ControlPoint {
+    
+    func wrapX(_ rows: Int,
+               _ columns: Int,
+               _ order: Int) -> Self {
+        
+        var result = Self()
+        
+        for column in 0..<columns {
+            
+            for row in 0..<(rows + order) {
+                
+                let i = row % rows + column * rows
+                
+                result.append(self[i])
+            }
+        }
+        
+        return result
     }
 }

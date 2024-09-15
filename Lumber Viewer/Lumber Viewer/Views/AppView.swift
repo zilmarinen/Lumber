@@ -61,9 +61,7 @@ struct AppView: View {
         
         Menu {
                                 
-//            Toggle("Show Bones", isOn: $viewModel.showBones)
-//            Toggle("Show Joints", isOn: $viewModel.showJoints)
-//            Toggle("Show Mesh", isOn: $viewModel.showMesh)
+            Toggle("Show Controls", isOn: $viewModel.showControls)
             
         } label: {
             

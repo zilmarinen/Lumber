@@ -11,6 +11,16 @@ import SceneKit
 
 class AppViewModel: ObservableObject {
     
+    @Published var showControls: Bool = true {
+        
+        didSet {
+            
+            guard oldValue != showControls else { return }
+            
+            updateScene()
+        }
+    }
+    
     @Published var profile: Mesh.Profile = .init(polygonCount: 0,
                                                  vertexCount: 0)
     
@@ -28,55 +38,9 @@ extension AppViewModel {
         
         scene.clear()
         
-        /*
-         
-         {  glm::vec3(0, 0, 1), glm::vec3(0, 0, 1), glm::vec3(0, 0, 1), glm::vec3(0, 0, 1),
-            glm::vec3(2, 0, 1), glm::vec3(2, 4, 1),  glm::vec3(-2, 4, 1),  glm::vec3(-2, 0, 1),
-            glm::vec3(2, 0, -1), glm::vec3(2, 4, -1), glm::vec3(-2, 4, -1), glm::vec3(-2, 0, -1),
-            glm::vec3(0, 0, -1), glm::vec3(0, 0, -1), glm::vec3(0, 0, -1), glm::vec3(0, 0, -1)
-         }
-         
-         {  1,       1.f/3.f, 1.f/3.f, 1,
-            1.f/3.f, 1.f/9.f, 1.f/9.f, 1.f/3.f,
-            1.f/3.f, 1.f/9.f, 1.f/9.f, 1.f/3.f,
-            1,       1.f/3.f, 1.f/3.f, 1
-         }
-         
-         */
+        let surface = NURBS.plane()
         
-//        let controlPoints = [ControlPoint(.init(0.0, 0.0, 1.0), 1.0),
-//                             ControlPoint(.init(0.0, 0.0, 1.0), 1.0 / 3.0),
-//                             ControlPoint(.init(0.0, 0.0, 1.0), 1.0 / 3.0),
-//                             ControlPoint(.init(0.0, 0.0, 1.0), 1.0),
-//        
-//                             ControlPoint(.init(2.0, 0.0, 1.0), 1.0 / 3.0),
-//                             ControlPoint(.init(2.0, 4.0, 1.0), 1.0 / 9.0),
-//                             ControlPoint(.init(-2.0, 4.0, 1.0), 1.0 / 9.0),
-//                             ControlPoint(.init(-2.0, 0.0, 1.0), 1.0 / 3.0),
-//        
-//                             ControlPoint(.init(2.0, 0.0, -1.0), 1.0 / 3.0),
-//                             ControlPoint(.init(2.0, 4.0, -1.0), 1.0 / 9.0),
-//                             ControlPoint(.init(-2.0, 4.0, -1.0), 1.0 / 9.0),
-//                             ControlPoint(.init(-2.0, 0.0, -1.0), 1.0 / 3.0),
-//        
-//                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0),
-//                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0 / 3.0),
-//                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0 / 3.0),
-//                             ControlPoint(.init(0.0, 0.0, -1.0), 1.0)]
-        
-        let controlPoints = [ControlPoint(.init(1.0, 0.0, -1.0), 1.0),
-                             ControlPoint(.init(-1.0, 0.0, -1.0), 1.0),
-                             ControlPoint(.init(1.0, 0.0, 1.0), 1.0),
-                             ControlPoint(.init(-1.0, 0.0, 1.0), 1.0)]
-        
-        let surface = Surface(4,
-                              2,
-                              2,
-                              .default,
-                              .default,
-                              controlPoints)
-        
-        guard let mesh = try? surface.mesh(5, 5) else { return }
+        guard let mesh = try? surface.mesh(7, 7) else { return }
         
         self.scene.model.geometry = SCNGeometry(mesh)
         self.scene.model.geometry?.program = Program(function: .geometry)
@@ -87,6 +51,24 @@ extension AppViewModel {
         self.scene.rootNode.addChildNode(node)
         
         updateProfile(for: mesh)
+        
+        if showControls {
+            
+            surface.cage.forEach { drawControlPoints(controlPoints: $0) }
+        }
+    }
+    
+    private func drawControlPoints(controlPoints: [ControlPoint]) {
+        
+        for controlPoint in controlPoints {
+            
+            let node = SCNNode(mesh: Mesh.cube(size: Vector(size: 0.05),
+                                               material: Color.black))
+            
+            node.position = SCNVector3(controlPoint.position)
+            
+            self.scene.rootNode.addChildNode(node)
+        }
     }
     
     private func updateProfile(for mesh: Mesh) {
