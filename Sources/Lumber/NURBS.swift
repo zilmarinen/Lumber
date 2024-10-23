@@ -4,90 +4,34 @@
 //  Created by Zack Brown on 14/09/2024.
 //
 
+import Bivouac
 import Euclid
 
-public struct NURBS {
-    
-    public let cage: [[ControlPoint]]
-    internal let degreeU: Int
-    internal let degreeV: Int
-    
-    public init(_ cage: [[ControlPoint]]) {
-        
-        self.cage = cage
-        self.degreeU = (cage.first?.count ?? 1) - 1
-        self.degreeV = cage.count - 1
-    }
-    
-    public init(_ cage: [[ControlPoint]],
-                _ degreeU: Int,
-                _ degreeV: Int) {
-      
-        self.cage = cage
-        self.degreeU = degreeU
-        self.degreeV = degreeV
-    }
-}
-
-extension NURBS {
-    
-    public func sample(_ u: Double,
-                       _ v: Double,
-                       _ wrapU: Bool,
-                       _ wrapV: Bool) -> ControlPoint {
-        
-        let controlPoints = cage.map { sample($0,
-                                              degreeU,
-                                              u,
-                                              wrapU) }
-        
-        return sample(controlPoints,
-                      degreeV,
-                      v,
-                      wrapV)
-    }
-    
-    internal func sample(_ controlPoints: [ControlPoint],
-                         _ degree: Int,
-                         _ t: Double,
-                         _ wrap: Bool) -> ControlPoint {
-        
-        guard degree >= 1 else {
-        
-            guard let controlPoint = controlPoints.first else { fatalError("Invalid control points") }
-            
-            return controlPoint
-        }
-        
-        var controls: [ControlPoint] = []
-        
-        for i in 0..<degree {
-            
-            let j = wrap ? controlPoints.wrappedIndex(i) : i
-            let k = wrap ? controlPoints.wrappedIndex(i + 1) : i + 1
-            
-            let lhs = controlPoints[j]
-            let rhs = controlPoints[k]
-            
-            let interpolated = lhs.weighted.mix(rhs.weighted,
-                                                t)
-            
-            controls.append(.init(interpolated))
-        }
-        
-        return sample(controls,
-                      degree - 1,
-                      t,
-                      wrap)
-    }
-}
-
-extension NURBS {
+extension Array where Element == [ControlPoint] {
     
     public func mesh(_ uResolution: Int,
                      _ vResolution: Int,
-                     _ wrapU: Bool = true,
-                     _ wrapV: Bool = true) throws -> Mesh {
+                     _ wrapU: Bool,
+                     _ wrapV: Bool) throws -> Mesh {
+        
+        var controlPoints = self
+        
+        if wrapU {
+            
+            for i in 0..<controlPoints.count {
+                
+                if let control = controlPoints[i].first {
+                    
+                    controlPoints[i].append(control)
+                }
+            }
+        }
+        
+        if wrapV,
+           let controls = controlPoints.first {
+            
+            controlPoints.append(controls)
+        }
         
         let uStep = 1.0 / Double(uResolution)
         let vStep = 1.0 / Double(vResolution)
@@ -98,10 +42,14 @@ extension NURBS {
             
             for v in 1...vResolution {
                 
-                let s0 = sample(Double(u - 1) * uStep, Double(v - 1) * vStep, wrapU, wrapV)
-                let s1 = sample(Double(u - 1) * uStep, Double(v) * vStep, wrapU, wrapV)
-                let s2 = sample(Double(u) * uStep, Double(v - 1) * vStep, wrapU, wrapV)
-                let s3 = sample(Double(u) * uStep, Double(v) * vStep, wrapU, wrapV)
+                let s0 = controlPoints.sample(Double(u - 1) * uStep,
+                                              Double(v - 1) * vStep)
+                let s1 = controlPoints.sample(Double(u - 1) * uStep,
+                                              Double(v) * vStep)
+                let s2 = controlPoints.sample(Double(u) * uStep,
+                                              Double(v - 1) * vStep)
+                let s3 = controlPoints.sample(Double(u) * uStep,
+                                              Double(v) * vStep)
                 
                 try polygons.append(Polygon.face([s2.position, s1.position, s0.position],
                                                  .blue))
@@ -113,30 +61,106 @@ extension NURBS {
         
         return Mesh(polygons)
     }
+    
+    internal func sample(_ u: Double,
+                         _ v: Double) -> ControlPoint {
+        
+        let degreeU = (first?.count ?? 1) - 1
+        let degreeV = count - 1
+        
+        let controlPoints = map { $0.sample(degreeU,
+                                            u) }
+        
+        return controlPoints.sample(degreeV,
+                                    v)
+    }
 }
 
-extension NURBS {
+extension Array where Element == ControlPoint {
     
-    public static func plane(_ x: Double = 1.0,
-                             _ z: Double = 1.0) -> Self {
+    internal func sample(_ degree: Int,
+                         _ t: Double) -> ControlPoint {
         
-        let controlPoints = [[ControlPoint(.init(x, 0.0, -z), 1.0),
-                              ControlPoint(.init(-x, 0.0, -z), 1.0)],
-                             [ControlPoint(.init(x, 0.0, z), 1.0),
-                              ControlPoint(.init(-x, 0.0, z), 1.0)]]
+        guard degree > 0 else {
         
-        return Self(controlPoints)
+            guard let controlPoint = first else { fatalError("Invalid control points") }
+            
+            return controlPoint
+        }
+        
+        var controls: [ControlPoint] = []
+        
+        for i in 0..<degree {
+            
+            let lhs = self[i]
+            let rhs = self[i + 1]
+            
+            let interpolated = lhs.weighted.mix(rhs.weighted,
+                                                t)
+            
+            controls.append(.init(interpolated))
+        }
+        
+        return controls.sample(degree - 1,
+                               t)
+    }
+}
+
+public enum Spline {
+    
+    case plane(x: Double,
+               z: Double)
+    
+    case unknown
+    
+    case urn(sides: Int,
+             innerRadius: Double,
+             outerRadius: Double)
+    
+    public func mesh(_ uResolution: Int,
+                     _ vResolution: Int,
+                     _ wrapU: Bool,
+                     _ wrapV: Bool) throws -> Mesh { try controlPoints.mesh(uResolution,
+                                                                            vResolution,
+                                                                            wrapU,
+                                                                            wrapV) }
+    
+    public var controlPoints: [[ControlPoint]] {
+        
+        switch self {
+            
+        case .plane(let x, let z): return plane(x, z)
+            
+        case .unknown: return unknown()
+            
+        case .urn(let sides,
+                  let innerRadius,
+                  let outerRadius): return urn(sides,
+                                               innerRadius,
+                                               outerRadius)
+        }
+    }
+}
+
+extension Spline {
+    
+    internal func plane(_ x: Double,
+                        _ z: Double) -> [[ControlPoint]] {
+    
+        [[ControlPoint(.init(x, 0.0, -z), 1.0),
+          ControlPoint(.init(-x, 0.0, -z), 1.0)],
+         [ControlPoint(.init(x, 0.0, z), 1.0),
+          ControlPoint(.init(-x, 0.0, z), 1.0)]]
     }
     
-    public static func urn() -> Self {
+    internal func urn(_ sides: Int,
+                      _ innerRadius: Double,
+                      _ outerRadius: Double) -> [[ControlPoint]] {
         
         var top: [ControlPoint] = []
         var middle: [ControlPoint] = []
         var bottom: [ControlPoint] = []
 
-        let innerRadius = 0.5
-        let outerRadius = 0.75
-        let sides = 8
         let step = Double.tau / Double(sides)
 
         for i in 0..<sides {
@@ -156,32 +180,28 @@ extension NURBS {
                                       sin(angle) * innerRadius), 1.0))
         }
         
-        let controlPoints = [top,
-                             middle,
-                             bottom]
-        
-        return Self(controlPoints)
+        return [top,
+                middle,
+                bottom]
     }
     
-    public static func unknown() -> Self {
+    internal func unknown() -> [[ControlPoint]] {
         
-        let controlPoints = [[ControlPoint(.init(0.0, 0.0, 0.0), 1.0),
-                              ControlPoint(.init(1.0, 0.0, 1.0), 1.0),
-                              ControlPoint(.init(2.0, 0.0, 0.0), 1.0),
-                              ControlPoint(.init(3.0, 0.0, 1.0), 1.0)],
-                             [ControlPoint(.init(0.0, 1.0, 1.0), 1.0),
-                              ControlPoint(.init(1.0, 1.0, 2.0), 1.0),
-                              ControlPoint(.init(2.0, 1.0, 1.0), 1.0),
-                              ControlPoint(.init(3.0, 1.0, 2.0), 1.0)],
-                             [ControlPoint(.init(0.0, 2.0, 0.0), 1.0),
-                              ControlPoint(.init(1.0, 2.0, 1.0), 1.0),
-                              ControlPoint(.init(2.0, 2.0, 0.0), 1.0),
-                              ControlPoint(.init(3.0, 2.0, 1.0), 1.0)],
-                             [ControlPoint(.init(0.0, 3.0, 1.0), 1.0),
-                              ControlPoint(.init(1.0, 3.0, 2.0), 1.0),
-                              ControlPoint(.init(2.0, 3.0, 1.0), 1.0),
-                              ControlPoint(.init(3.0, 3.0, 2.0), 1.0)]]
-        
-        return Self(controlPoints)
+        [[ControlPoint(.init(0.0, 0.0, 0.0), 1.0),
+          ControlPoint(.init(1.0, 0.0, 1.0), 1.0),
+          ControlPoint(.init(2.0, 0.0, 0.0), 1.0),
+          ControlPoint(.init(3.0, 0.0, 1.0), 1.0)],
+         [ControlPoint(.init(0.0, 1.0, 1.0), 1.0),
+          ControlPoint(.init(1.0, 1.0, 2.0), 1.0),
+          ControlPoint(.init(2.0, 1.0, 1.0), 1.0),
+          ControlPoint(.init(3.0, 1.0, 2.0), 1.0)],
+         [ControlPoint(.init(0.0, 2.0, 0.0), 1.0),
+          ControlPoint(.init(1.0, 2.0, 1.0), 1.0),
+          ControlPoint(.init(2.0, 2.0, 0.0), 1.0),
+          ControlPoint(.init(3.0, 2.0, 1.0), 1.0)],
+         [ControlPoint(.init(0.0, 3.0, 1.0), 1.0),
+          ControlPoint(.init(1.0, 3.0, 2.0), 1.0),
+          ControlPoint(.init(2.0, 3.0, 1.0), 1.0),
+          ControlPoint(.init(3.0, 3.0, 2.0), 1.0)]]
     }
 }

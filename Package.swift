@@ -11,12 +11,14 @@ let package = Package(
                         targets: ["Lumber"]),
     ],
     dependencies: [
+        .package(path: "../Bivouac"),
         .package(url: "git@github.com:nicklockwood/Euclid.git",
                  branch: "develop"),
     ],
     targets: [
         .target(name: "Lumber",
-                dependencies: ["Euclid"]),
+                dependencies: ["Bivouac",
+                               "Euclid"]),
         .testTarget(name: "LumberTests",
                     dependencies: ["Lumber"]),
     ]

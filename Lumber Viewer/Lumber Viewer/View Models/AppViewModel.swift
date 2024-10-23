@@ -38,9 +38,14 @@ extension AppViewModel {
         
         scene.clear()
         
-        let surface = NURBS.plane()
+        //let surface = Spline.plane(x: 1, z: 1)
+        //let surface = Spline.unknown
+        let surface = Spline.urn(sides: 4, innerRadius: 0.5, outerRadius: 1.5)
         
-        guard let mesh = try? surface.mesh(7, 7) else { return }
+        guard let mesh = try? surface.mesh(20,
+                                           20,
+                                           true,
+                                           true) else { return }
         
         self.scene.model.geometry = SCNGeometry(mesh)
         self.scene.model.geometry?.program = Program(function: .geometry)
@@ -54,7 +59,7 @@ extension AppViewModel {
         
         if showControls {
             
-            surface.cage.forEach { drawControlPoints(controlPoints: $0) }
+            surface.controlPoints.forEach { drawControlPoints(controlPoints: $0) }
         }
     }
     
